@@ -1,0 +1,75 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Virtual environments
+venv/
+env/
+.venv/
+.env/
+
+# Environment variables and credentials
+*.env
+.env.*
+
+# VS Code settings (opcional)
+.vscode/
+
+# PyCharm settings (opcional)
+.idea/
+
+# macOS system files
+.DS_Store
+
+# Log files
+*.log
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+
+# mypy
+.mypy_cache/
+
+# pytest
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# FastAPI auto-generated OpenAPI/Swagger docs (si los generas a archivos)
+openapi.json
+swagger.json
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Database
+*.sqlite3
+*.db
+
+# Gunicorn or Uvicorn logs
+gunicorn.log
+uvicorn.log
+
+# Docker
+*.pid
+*.pid.lock
+
+# alembic
+alembic/versions/*.pyc
+alembic/versions/__pycache__/
