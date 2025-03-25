@@ -1,82 +1,95 @@
 import os
+import re
 import uuid
 import traceback
 from openai import OpenAI
+from langchain_community.embeddings import OpenAIEmbeddings
+from supabase import create_client
 from unstructured.partition.auto import partition
 from tiktoken import encoding_for_model
-import pickle
-import faiss
-import numpy as np
 
 # === CONFIGURACIÓN ===
-ROOT_DIR = "Poliza_Chat"  # <-- ajusta si es necesario
+ROOT_DIR = "Poliza_Chat"
 EMBEDDING_MODEL = "text-embedding-3-small"
 DIMENSION = 1536
+
+# ✅ Supabase
+SUPABASE_URL = "https://xewxagocwjpepdmwzzxj.supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhld3hhZ29jd2pwZXBkbXd6enhqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDI4ODE3NDcsImV4cCI6MjA1ODQ1Nzc0N30.RC5Im_aHvlYFxsGmhzFJMjFnPtGtPjET1qawGXfzifM"
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# ✅ OpenAI
 client = OpenAI()
+embedding_model = OpenAIEmbeddings(model=EMBEDDING_MODEL)
 
 # === FUNCIONES ===
 
-def chunk_text(text, max_tokens=1500):
-    enc = encoding_for_model("text-embedding-3-small")
-    words = text.split()
-    chunks, current = [], []
+def chunk_text(text, max_tokens=1200):
+    enc = encoding_for_model(EMBEDDING_MODEL)
+    paragraphs = text.split("\n")
+    chunks, current_chunk = [], []
 
-    for word in words:
-        current.append(word)
-        if len(enc.encode(" ".join(current))) > max_tokens:
-            chunks.append(" ".join(current[:-1]))
-            current = [word]
+    for paragraph in paragraphs:
+        if not paragraph.strip():
+            continue
+        candidate = "\n".join(current_chunk + [paragraph])
+        if len(enc.encode(candidate)) <= max_tokens:
+            current_chunk.append(paragraph)
+        else:
+            if current_chunk:
+                chunks.append("\n".join(current_chunk))
+            current_chunk = [paragraph]
 
-    if current:
-        chunks.append(" ".join(current))
+    if current_chunk:
+        chunks.append("\n".join(current_chunk))
 
     return chunks
 
-def process_document(path, index, texts, metadatas):
+def process_docx(path):
     print(f"📄 Procesando: {path}")
     try:
         elements = partition(filename=path)
         text = "\n".join([el.text for el in elements if el.text])
 
         if not text.strip():
-            print("⚠️ Sin texto útil.")
-            return
+            print("❌ Sin texto útil.")
+            return []
 
         chunks = chunk_text(text)
 
-        for i, chunk in enumerate(chunks):
-            embedding = client.embeddings.create(
-                model=EMBEDDING_MODEL,
-                input=chunk
-            ).data[0].embedding
+        return [{
+            "text": chunk,
+            "source": path,
+            "chunk_index": i
+        } for i, chunk in enumerate(chunks)]
 
-            vector = np.array(embedding, dtype="float32").reshape(1, -1)
-            index.add(vector)
-
-            texts.append(chunk)
-            metadatas.append({
-                "source": path,
-                "chunk_index": i
-            })
-
-    except Exception:
-        print(f"❌ Error: {path}")
+    except Exception as e:
+        print(f"❌ Error procesando {path}: {e}")
         print(traceback.format_exc())
+        return []
 
-# === INDEXADO ===
-index = faiss.IndexFlatL2(DIMENSION)
-texts, metadatas = [], []
+# === RECORRER SOLO ARCHIVOS .DOCX ===
+
+all_docs = []
 
 for root, _, files in os.walk(ROOT_DIR):
     for file in files:
-        if file.lower().endswith((".pdf", ".docx")):
-            process_document(os.path.join(root, file), index, texts, metadatas)
+        if file.lower().endswith(".docx"):
+            path = os.path.join(root, file)
+            all_docs.extend(process_docx(path))
 
-# === GUARDAR FAISS + METADATA ===
-os.makedirs("vector_store", exist_ok=True)
-faiss.write_index(index, "vector_store/index.faiss")
+print(f"🧠 Generando e insertando embeddings para {len(all_docs)} chunks...")
 
-with open("vector_store/index.pkl", "wb") as f:
-    pickle.dump({"texts": texts, "metadatas": metadatas}, f)
+# === INSERTAR EN SUPABASE ===
 
-print("✅ ¡Indexado y guardado en vector_store!")
+for doc in all_docs:
+    embedding = embedding_model.embed_query(doc["text"])
+    supabase.table("documentos_vector").insert({
+        "id": str(uuid.uuid4()),
+        "content": doc["text"],
+        "embedding": embedding,
+        "source": doc["source"],
+        "chunk_index": doc["chunk_index"]
+    }).execute()
+
+print("✅ ¡Carga completa a Supabase solo con .docx! 🎉")
