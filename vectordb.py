@@ -92,4 +92,4 @@ for doc in all_docs:
         "chunk_index": doc["chunk_index"]
     }).execute()
 
-print("✅ ¡Carga completa a Supabase solo con .docx! 🎉")
+print("Se cargo todo a supabase")
